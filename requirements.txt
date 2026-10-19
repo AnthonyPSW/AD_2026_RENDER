@@ -1,0 +1,5 @@
+Flask
+gunicorn
+python-tds
+pyOpenSSL
+certifi
