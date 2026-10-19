@@ -14,9 +14,8 @@ def getConnection():
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
         port=int(os.getenv("DB_PORT", "1433")),
-        cafile=os.getenv("DB_CAFILE") or certifi.where(),
-        validate_host=os.getenv("DB_VALIDATE_HOST", "true").lower() == "true",
-        enc_login_only=False
+        cafile= certifi.where(),
+        validate_host=True,
     )
 
 @app.route("/test-db", methods=["GET"])
