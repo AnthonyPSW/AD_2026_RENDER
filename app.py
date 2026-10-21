@@ -370,6 +370,79 @@ def update_version():
         }), 500
 
 
+def enviar_correo_brevo(total_productos):
+    api_key = os.getenv("BREVO_API_KEY")
+    remitente = os.getenv("EMAIL_REMITENTE")
+    destino = os.getenv("EMAIL_DESTINO")
+
+    if not all((api_key, remitente, destino)):
+        raise RuntimeError("Falta configurar Brevo en las variables de entorno")
+
+    payload = {
+        "sender": {"name": "Práctica Aplicaciones Distribuidas", "email": remitente},
+        "to": [{"email": destino}],
+        "subject": "Procesamiento de productos finalizado",
+        "textContent": (
+            "El procesamiento finalizó correctamente.\n"
+            f"Total de productos registrados: {total_productos}.\n"
+            "Origen: API Flask desplegada en Render."
+        ),
+    }
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={"api-key": api_key, "Content-Type": "application/json"},
+        json=payload,
+        timeout=15,
+    )
+    if response.status_code != 201:
+        raise RuntimeError(f"Brevo rechazó la solicitud (HTTP {response.status_code})")
+
+    respuesta = response.json()
+    return respuesta.get("messageId")
+
+
+@app.route("/api/procesar", methods=["POST"])
+def procesar_productos_y_notificar():
+    clave_esperada = os.getenv("PROCESS_API_KEY", "")
+    clave_recibida = request.headers.get("X-API-Key", "")
+
+    if not clave_esperada:
+        return jsonify({"mensaje": "Falta configurar PROCESS_API_KEY"}), 503
+    if not hmac.compare_digest(clave_recibida, clave_esperada):
+        return jsonify({"mensaje": "No autorizado"}), 401
+
+    try:
+        with closing(getConnection()) as conn:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("SELECT COUNT(*) FROM PRODUCTS_VW")
+                total_productos = int(cursor.fetchone()[0])
+    except Exception:
+        app.logger.exception("Fallo durante la consulta de productos")
+        return jsonify({
+            "procesamiento": "error",
+            "mensaje": "No se pudo consultar Azure SQL"
+        }), 500
+
+    try:
+        message_id = enviar_correo_brevo(total_productos)
+    except (requests.RequestException, RuntimeError, ValueError):
+        app.logger.exception("Falló la solicitud de correo a Brevo")
+        return jsonify({
+            "procesamiento": "finalizado",
+            "total_productos": total_productos,
+            "notificacion": "error",
+            "mensaje": "La consulta terminó, pero Brevo no aceptó el correo"
+        }), 502
+
+    return jsonify({
+        "procesamiento": "finalizado",
+        "total_productos": total_productos,
+        "notificacion": "aceptada_por_brevo",
+        "messageId": message_id,
+    }), 200
+
+
+
 # ==========================================
 # INICIAR APLICACIÓN
 # ==========================================
