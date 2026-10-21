@@ -2,9 +2,11 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from contextlib import closing
 import os
+import hmac
 import certifi
 import pytds
 import threading
+import requests
 
 app = Flask(__name__)
 CORS(app)
